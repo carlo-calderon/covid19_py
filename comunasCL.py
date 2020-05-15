@@ -8,27 +8,27 @@ Created on Thu May 14 23:34:05 2020
 import pandas as pd
 import numpy as np
 
-data = pd.read_csv('./COVID19-Chile/output/producto1/Covid-19.csv', index_col=2)
+data = pd.read_csv('../COVID19-Chile/output/producto1/Covid-19.csv', index_col=2)
 print(data)
 print(data.columns)
-data['Comuna'] = data.index
 cases = data[data.columns[4:-2]]
 
 tot = pd.core.frame.DataFrame()
 comunas = []
-for i in range(cases.shape[0]):
-    name = cases.index[i]
-    #print('agregando:', i, name)
-    m = cases[i:i+1].T
+for row in data.iterrows():
+    name = row[0]
+    #print('agregando:', name)
+    m = row[1][4:-1].to_frame()
     m['Fecha'] = m.index
     m=m.rename(columns={name:'cases'})
-    row = data[data['Comuna']==name]
-    m['Region'] = row['Region'].iloc[0]
+    m['Region'] = row[1]['Region']
     m['Comuna'] = name
-    m['Poblacion'] = row['Poblacion'].iloc[0]
+    m['Poblacion'] = row[1]['Poblacion']
     s = m['cases']
     m['new_cases'] = s.subtract(s.shift(1), fill_value=0)
     
+    #print(m)
+    #break
     comunas.append(m)
     
 #    break
