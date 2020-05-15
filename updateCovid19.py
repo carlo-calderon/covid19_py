@@ -82,10 +82,10 @@ def fillDifferences(data, column, column_dif, prev_date = prevDate):
                 data[country][f][column_dif] = data[country][f][column] - data[country][f_ant][column]
     return data
     
-countries = fillCountries('COVID-19/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv')
+countries = fillCountries('../COVID-19/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv')
 data = dict()
 
-path_data = 'COVID-19/csse_covid_19_data/csse_covid_19_time_series/' 
+path_data = '../COVID-19/csse_covid_19_data/csse_covid_19_time_series/' 
 fillData(path_data + 'time_series_covid19_confirmed_global.csv', 'cases_acc', countries, data)
 fillData(path_data + 'time_series_covid19_deaths_global.csv', 'deaths_acc', countries, data)
 fillData(path_data + 'time_series_covid19_recovered_global.csv', 'recovered_acc', countries, data)
@@ -99,7 +99,7 @@ print('----------------CHILE----------------')
 print(data['Chile'])
 print('=====================================')
 
-with open('covid19.csv', 'w', newline='', encoding='utf-8') as f_writer:
+with open('../covid19.csv', 'w', newline='', encoding='utf-8') as f_writer:
     header = ['dateRep', 'day', 'month', 'year', 'cases', 'deaths', 'recovered',
               'cases_acc', 'deaths_acc', 'recovered_acc', 'countriesAndTerritories',
               'geoId', 'countryterritoryCode', 'popData2018']
@@ -176,10 +176,10 @@ def fillRecoveredCl(filename, data_cl, region, tag):
                 data_cl[region][key][tag] = int(float(row[key]))
 
 #corregirCL()
-path_p4 = './tmp/cl_producto4/'
+path_p4 = '../tmp/cl_producto4/'
 data_cl = dict()
-matrix2Table('./COVID19-Chile/output/producto9/HospitalizadosUCIEtario.csv', 'Grupo de edad', 'Fecha', 'UCI', './tmp/HospitalizadosUCIEtario.csv')
-matrix2Table('./COVID19-Chile/output/producto10/FallecidosEtario.csv', 'Grupo de edad', 'Fecha', 'Fallecidos', './tmp/FallecidosEtario.csv')
+matrix2Table('../COVID19-Chile/output/producto9/HospitalizadosUCIEtario.csv', 'Grupo de edad', 'Fecha', 'UCI', '../tmp/HospitalizadosUCIEtario.csv')
+matrix2Table('../COVID19-Chile/output/producto10/FallecidosEtario.csv', 'Grupo de edad', 'Fecha', 'Fallecidos', '../tmp/FallecidosEtario.csv')
 
 for f in listdir(path_p4):
     fecha=f[0:10]
@@ -189,16 +189,16 @@ for f in listdir(path_p4):
     fillDataDetalleCl(path_p4 + f, data_cl, fecha,
                     {'Casos totales': 'cases_acc', 'Fallecidos': 'deaths_acc', 'Casos recuperados': 'recovered_acc'})
 
-fillRecoveredCl('./COVID19-Chile/output/producto5/TotalesNacionales.csv', data_cl, 'Metropolitana', 'recovered_acc')
-fillDataCl('tmp/PCR.csv', data_cl, 'pcr')
-fillDataCl('tmp/UCI.csv', data_cl, 'uci')
+fillRecoveredCl('../COVID19-Chile/output/producto5/TotalesNacionales.csv', data_cl, 'Metropolitana', 'recovered_acc')
+fillDataCl('../tmp/PCR.csv', data_cl, 'pcr')
+fillDataCl('../tmp/UCI.csv', data_cl, 'uci')
 
 fillDifferences(data_cl, 'cases_acc', 'cases', prevDateCl)
 fillDifferences(data_cl, 'deaths_acc', 'deaths', prevDateCl)
 fillDifferences(data_cl, 'recovered_acc', 'recovered', prevDateCl)
 print(data_cl['Metropolitana'])
 
-with open('covid19_cl.csv', 'w', newline='', encoding='utf-8') as f_writer:
+with open('../covid19_cl.csv', 'w', newline='', encoding='utf-8') as f_writer:
     header = ['dateRep', 'day', 'month', 'year', 'cases', 'deaths', 'recovered',
               'cases_acc', 'deaths_acc', 'recovered_acc', 'Region', 'popData2018',
               'pcr', 'uci']
