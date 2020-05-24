@@ -11,9 +11,7 @@ import numpy as np
 data = pd.read_csv('../COVID19-Chile/output/producto1/Covid-19.csv', index_col=2)
 print(data)
 print(data.columns)
-cases = data[data.columns[4:-2]]
 
-tot = pd.core.frame.DataFrame()
 comunas = []
 for row in data.iterrows():
     name = row[0]
@@ -27,16 +25,9 @@ for row in data.iterrows():
     s = m['cases']
     m['new_cases'] = s.subtract(s.shift(1), fill_value=0)
     
-    #print(m)
-    #break
     comunas.append(m)
     
-#    break
-
-tot = pd.concat(comunas)    
 print('Total------')
+tot = pd.concat(comunas)    
 print(tot)
-tot.to_csv('./tot.csv', index=False)   
-#print(data)
-#print(data.iloc[0:1, 4:-1].T)
-#print(type(data), data.columns)
+tot.to_csv('../Comunas.csv', index=False)   
