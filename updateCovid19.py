@@ -173,7 +173,11 @@ def fillRecoveredCl(filename, data_cl, region, tag):
             for key in row.keys():
                 if key == 'Fecha' or not(key in data_cl[region].keys()):
                     continue
-                data_cl[region][key][tag] = int(float(row[key]))
+                # print(key, '"', row[key], '"', len(row[key]))
+                if len(row[key])>0:
+                    data_cl[region][key][tag] = int(float(row[key]))
+                else:
+                    data_cl[region][key][tag] = 0
 
 #corregirCL()
 path_p4 = '../tmp/cl_producto4/'
