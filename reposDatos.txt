@@ -1,0 +1,2 @@
+Chile: https://github.com/MinCiencia/Datos-COVID19.git
+Mundo: https://github.com/CSSEGISandData/COVID-19.git
