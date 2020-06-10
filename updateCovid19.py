@@ -13,7 +13,6 @@ Created on Fri Apr  3 17:29:17 2020
 import csv
 from datetime import date, timedelta
 from os import listdir
-from corregirCL import corregirCL
 
 def prevDate(f):
     sf = tuple(map(lambda x: int(x), f.split('/')))
@@ -33,6 +32,24 @@ def matrix2Table(filename_in, row_name, column_name, value_name, filename_out):
                 if key == row_name:
                     continue
                 writer.writerow([row[row_name], key, row[key]])
+    f_writer.close()
+def matrix2MultiTable(filename_in, rows_names, column_name, value_name, filename_out):
+    f_writer = open(filename_out, 'w', newline='', encoding='utf-8')
+    writer = csv.writer(f_writer)
+    writer.writerow(list(rows_names + [column_name, value_name]))
+    with open(filename_in, newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if not(rows_names[0] in row.keys()):
+                continue
+            for key in row.keys():
+                if key in rows_names:
+                    continue
+                new_row = []
+                for row_name in rows_names:
+                    new_row.append(row[row_name])
+                new_row = new_row + [key, row[key]]
+                writer.writerow(new_row)
     f_writer.close()
     
 def prevDateCl(f):
@@ -182,8 +199,15 @@ def fillRecoveredCl(filename, data_cl, region, tag):
 #corregirCL()
 path_p4 = '../tmp/cl_producto4/'
 data_cl = dict()
-matrix2Table('../COVID19-Chile/output/producto9/HospitalizadosUCIEtario.csv', 'Grupo de edad', 'Fecha', 'UCI', '../tmp/HospitalizadosUCIEtario.csv')
-matrix2Table('../COVID19-Chile/output/producto10/FallecidosEtario.csv', 'Grupo de edad', 'Fecha', 'Fallecidos', '../tmp/FallecidosEtario.csv')
+matrix2Table('../COVID19-Chile/output/producto9/HospitalizadosUCIEtario.csv',
+             'Grupo de edad', 'Fecha', 'UCI',
+             '../tmp/HospitalizadosUCIEtario.csv')
+matrix2Table('../COVID19-Chile/output/producto10/FallecidosEtario.csv',
+             'Grupo de edad', 'Fecha', 'Fallecidos',
+             '../tmp/FallecidosEtario.csv')
+matrix2MultiTable('../COVID19-Chile/output/producto16/CasosGeneroEtario.csv',
+                  ['Grupo de edad', 'Sexo'], 'Fecha', 'Cases',
+                  '../tmp/CasosGeneroEtario.csv')
 
 for f in listdir(path_p4):
     fecha=f[0:10]
