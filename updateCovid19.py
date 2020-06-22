@@ -13,6 +13,7 @@ Created on Fri Apr  3 17:29:17 2020
 import csv
 from datetime import date, timedelta
 from os import listdir
+import pandas as pd
 
 def prevDate(f):
     sf = tuple(map(lambda x: int(x), f.split('/')))
@@ -135,7 +136,7 @@ with open('../covid19.csv', 'w', newline='', encoding='utf-8') as f_writer:
                       country, countries[country]['iso2'], countries[country]['iso3'], countries[country]['popData2018']]
                 writer.writerow(row)
             except:
-                print('ERROR', row)
+                print('ERROR: ', row)
                 print(countries[country])
 
 ## BD CHILE
@@ -195,6 +196,13 @@ def fillRecoveredCl(filename, data_cl, region, tag):
                     data_cl[region][key][tag] = int(float(row[key]))
                 else:
                     data_cl[region][key][tag] = 0
+                    
+def fillPopCl(filename, data_cl, name_column):
+    data = pd.read_csv(filename)
+    for row in data.itertuples():
+        pop = data[data.Region==row.Region].iloc[0][name_column]
+        for f in data_cl[row.Region]:
+            data_cl[row.Region][f]['popData2018'] = pop
 
 #corregirCL()
 path_p4 = '../tmp/cl_producto4/'
@@ -211,20 +219,26 @@ matrix2MultiTable('../COVID19-Chile/output/producto16/CasosGeneroEtario.csv',
 
 for f in listdir(path_p4):
     fecha=f[0:10]
-    print(f, fecha)
+    print(f, fecha, len(data_cl.keys()))
     if len(f)<10 or f[0:3] != '202':
         continue
     fillDataDetalleCl(path_p4 + f, data_cl, fecha,
                     {'Casos totales': 'cases_acc', 'Fallecidos': 'deaths_acc', 'Casos recuperados': 'recovered_acc'})
 
 fillRecoveredCl('../COVID19-Chile/output/producto5/TotalesNacionales.csv', data_cl, 'Metropolitana', 'recovered_acc')
+print('recovered', len(data_cl.keys()), data_cl.keys())
+fillPopCl('../tmp/PCR.csv', data_cl, 'Poblacion')
+print('pop', len(data_cl.keys()), data_cl.keys())
 fillDataCl('../tmp/PCR.csv', data_cl, 'pcr')
+print('pcr', len(data_cl.keys()), data_cl.keys())
 fillDataCl('../tmp/UCI.csv', data_cl, 'uci')
+print('uci', len(data_cl.keys()), data_cl.keys())
 
 fillDifferences(data_cl, 'cases_acc', 'cases', prevDateCl)
 fillDifferences(data_cl, 'deaths_acc', 'deaths', prevDateCl)
 fillDifferences(data_cl, 'recovered_acc', 'recovered', prevDateCl)
-print(data_cl['Metropolitana'])
+# print(data_cl['Metropolitana'])
+print(data_cl.keys())
 
 with open('../covid19_cl.csv', 'w', newline='', encoding='utf-8') as f_writer:
     header = ['dateRep', 'day', 'month', 'year', 'cases', 'deaths', 'recovered',
@@ -240,10 +254,11 @@ with open('../covid19_cl.csv', 'w', newline='', encoding='utf-8') as f_writer:
                 row= [fecha.strftime('%d/%m/%Y'), fecha.day, fecha.month, fecha.year, 
                       data_cl[region][d]['cases'], data_cl[region][d]['deaths'], data_cl[region][d]['recovered'], 
                       data_cl[region][d]['cases_acc'], data_cl[region][d]['deaths_acc'], data_cl[region][d]['recovered_acc'], 
-                      region, 0,
+                      region, data_cl[region][d]['popData2018'],
                       data_cl[region][d]['pcr'], data_cl[region][d]['uci']]
                 writer.writerow(row)
             except:
-                print('ERROR', row)
-                print(countries[country])
+                print('ERROR CL:', row)
+                print(region, d, data_cl[region][d])
+                break
 
