@@ -168,7 +168,7 @@ def fillDataDetalleCl(filename, data_cl, fecha, tags):
         for row in reader:
             try:
                 if not(row['Region'] in data_cl.keys()):
-                    if row['Region'] == 'Total':
+                    if row['Region'] == 'Total' or row['Region'] == 'Se desconoce region de origen':
                         continue
                     data_cl[row['Region']] = dict()
                 if not(fecha in data_cl[row['Region']].keys()):
@@ -176,12 +176,13 @@ def fillDataDetalleCl(filename, data_cl, fecha, tags):
                 for tag in tags:
                     if tag in row.keys():
                         if len(row[tag])>0:
-                            n=int(row[tag])
+                            n=int(float(row[tag]))
                         else:
                             n=0
                         data_cl[row['Region']][fecha][tags[tag]] = n
             except:
-                print('ERROR:', row.keys())
+                print('ERROR:', fecha, row.keys())
+                print(row['Region'], tags)
                     
 def fillRecoveredCl(filename, data_cl, region, tag):
     with open(filename, newline='', encoding='utf-8') as f:
@@ -198,12 +199,12 @@ def fillRecoveredCl(filename, data_cl, region, tag):
                 else:
                     data_cl[region][key][tag] = 0
                     
-def fillPopCl(filename, data_cl, name_column):
+def fillPopCl(filename, data_cl, name_column, name_new_column):
     data = pd.read_csv(filename)
     for row in data.itertuples():
         pop = data[data.Region==row.Region].iloc[0][name_column]
         for f in data_cl[row.Region]:
-            data_cl[row.Region][f]['popData2018'] = pop
+            data_cl[row.Region][f][name_new_column] = pop
             
 def createDataFrame(data, header):
     columnas = ['Region', 'Fecha', 'dateRep', 'day', 'month', 'year'] + header
@@ -214,32 +215,53 @@ def createDataFrame(data, header):
         data_dict[c] = []
     for region, dates in data.items():
         for fecha, datos in dates.items():
-            [year, month, day] = fecha.split('-')
-            data_dict['Region'].append(region)
-            data_dict['Fecha'].append(fecha)
-            data_dict['dateRep'].append('{0:s}/{1:s}/{2:s}'.format(day, month, year))
-            data_dict['day'].append(int(day))
-            data_dict['month'].append(int(month))
-            data_dict['year'].append(int(year))
-            for h in header:
-                data_dict[h].append(datos[h])
+            try:
+                [year, month, day] = fecha.split('-')
+                data_dict['Region'].append(region)
+                data_dict['Fecha'].append(fecha)
+                data_dict['dateRep'].append('{0:s}/{1:s}/{2:s}'.format(day, month, year))
+                data_dict['day'].append(int(day))
+                data_dict['month'].append(int(month))
+                data_dict['year'].append(int(year))
+                for h in header:
+                    data_dict[h].append(datos[h])
+            except:
+                print('Error:', region, fecha)
+                print(datos)
     df = pd.DataFrame(data_dict)
     print('... dataFrame OK.')
     return df
+
+def corregirAcumulado(data, column, column_acc):
+    regiones = data.Region.unique()
+    for region in regiones:
+        data['cases_acc'] = data['cases'].cumsum()
+    return data
         
 def corregirPeak(data, column, date_peak, date_ini):
     regiones = data.Region.unique()
-    data['other'] = 0
+    data['ajuste'] = 0
+    data['ajuste'] = data.ajuste.astype('int32')
     for region in regiones:
         filtro = data[data.Region == region]
         npeak = filtro[filtro.Fecha == date_peak].cases
         nprev = filtro[filtro.index == npeak.index[0]-1].cases
+        if nprev.values[0] >= npeak.values[0]:
+            continue
         filtro = filtro[filtro.Fecha < date_peak]
         filtro = filtro[filtro.Fecha >= date_ini]
-        print(filtro.cases.sum(), ':', npeak.index[0], npeak.values[0], nprev)
-        filtro.other = filtro.cases_acc.diff()
+        acumulados = filtro[filtro.index == nprev.index[0]].cases_acc.values[0]
+        a_repartir = npeak.values[0] - nprev.values[0]
+        filtro.ajuste = filtro.cases * (a_repartir / acumulados)
+        filtro.ajuste = filtro.ajuste.astype('int32')
+        agregados = filtro.ajuste.sum()
+        data.at[npeak.index[0], 'ajuste'] = -agregados
+        print(region, data.at[npeak.index[0], 'ajuste'])
+        print(filtro.cases.sum(), ':[', npeak.values[0], nprev.values[0], npeak.values[0]-agregados, ']', acumulados, a_repartir, agregados)
         data.update(filtro)
-        break
+    data.cases = data.cases + data.ajuste
+    data = data.drop(columns=['ajuste'])
+    return data
 
 #corregirCL()
 path_p4 = '../tmp/cl_producto4/'
@@ -264,7 +286,7 @@ for f in listdir(path_p4):
 
 fillRecoveredCl('../COVID19-Chile/output/producto5/TotalesNacionales.csv', data_cl, 'Metropolitana', 'recovered_acc')
 # print('recovered', len(data_cl.keys()), data_cl.keys())
-fillPopCl('../tmp/PCR.csv', data_cl, 'Poblacion')
+fillPopCl('../tmp/PCR.csv', data_cl, 'Poblacion', 'popData2018')
 # print('pop', len(data_cl.keys()), data_cl.keys())
 fillDataCl('../tmp/PCR.csv', data_cl, 'pcr')
 # print('pcr', len(data_cl.keys()), data_cl.keys())
@@ -282,24 +304,27 @@ header = ['Region', 'dateRep', 'day', 'month', 'year', 'cases', 'deaths', 'recov
           'cases_acc', 'deaths_acc', 'recovered_acc', 'popData2018', 'pcr', 'uci']
 df_cl = createDataFrame(data_cl, header[5:])
 corregirPeak(df_cl, 'cases', '2020-06-17', '2020-01-01')
+df_cl = df_cl.convert_dtypes()
+print(df_cl.dtypes)
 df_cl.to_csv('../covid19_cl_pd.csv', index=False)
+df_cl.to_csv('../covid19_cl.csv', index=False, columns=header)
 
-with open('../covid19_cl.csv', 'w', newline='', encoding='utf-8') as f_writer:
-    writer = csv.writer(f_writer)
-    writer.writerow(header)
-    for region in data_cl.keys():
-        for d in data_cl[region].keys():
-            sf = tuple(map(lambda x: int(x), d.split('-')))
-            fecha = date(sf[0], sf[1], sf[2])
-            try:
-                row= [region, fecha.strftime('%d/%m/%Y'), fecha.day, fecha.month, fecha.year, 
-                      data_cl[region][d]['cases'], data_cl[region][d]['deaths'], data_cl[region][d]['recovered'], 
-                      data_cl[region][d]['cases_acc'], data_cl[region][d]['deaths_acc'], data_cl[region][d]['recovered_acc'], 
-                      data_cl[region][d]['popData2018'],
-                      data_cl[region][d]['pcr'], data_cl[region][d]['uci']]
-                writer.writerow(row)
-            except:
-                print('ERROR CL:', row)
-                print(region, d, data_cl[region][d])
-                break
+# with open('../covid19_cl.csv', 'w', newline='', encoding='utf-8') as f_writer:
+#     writer = csv.writer(f_writer)
+#     writer.writerow(header)
+#     for region in data_cl.keys():
+#         for d in data_cl[region].keys():
+#             sf = tuple(map(lambda x: int(x), d.split('-')))
+#             fecha = date(sf[0], sf[1], sf[2])
+#             try:
+#                 row= [region, fecha.strftime('%d/%m/%Y'), fecha.day, fecha.month, fecha.year, 
+#                       data_cl[region][d]['cases'], data_cl[region][d]['deaths'], data_cl[region][d]['recovered'], 
+#                       data_cl[region][d]['cases_acc'], data_cl[region][d]['deaths_acc'], data_cl[region][d]['recovered_acc'], 
+#                       data_cl[region][d]['popData2018'],
+#                       data_cl[region][d]['pcr'], data_cl[region][d]['uci']]
+#                 writer.writerow(row)
+#             except:
+#                 print('ERROR CL:', row)
+#                 print(region, d, data_cl[region][d])
+#                 break
 
