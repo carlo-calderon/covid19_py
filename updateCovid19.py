@@ -242,25 +242,29 @@ def corregirPeak(data, column, date_peak, date_ini):
     regiones = data.Region.unique()
     data['ajuste'] = 0
     data['ajuste'] = data.ajuste.astype('int32')
+    data['ajuste_acc'] = 0
+    data['ajuste_acc'] = data.ajuste_acc.astype('int32')
     for region in regiones:
         filtro = data[data.Region == region]
-        npeak = filtro[filtro.Fecha == date_peak].cases
-        nprev = filtro[filtro.index == npeak.index[0]-1].cases
+        npeak = filtro[filtro.Fecha == date_peak][column]
+        nprev = filtro[filtro.index == npeak.index[0]-1][column]
         if nprev.values[0] >= npeak.values[0]:
             continue
         filtro = filtro[filtro.Fecha < date_peak]
         filtro = filtro[filtro.Fecha >= date_ini]
-        acumulados = filtro[filtro.index == nprev.index[0]].cases_acc.values[0]
+        acumulados = filtro[filtro.index == nprev.index[0]]['cases_acc'].values[0]
         a_repartir = npeak.values[0] - nprev.values[0]
-        filtro.ajuste = filtro.cases * (a_repartir / acumulados)
+        filtro.ajuste = filtro[column] * (a_repartir / acumulados)
         filtro.ajuste = filtro.ajuste.astype('int32')
+        filtro.ajuste_acc = filtro.ajuste.cumsum()
         agregados = filtro.ajuste.sum()
         data.at[npeak.index[0], 'ajuste'] = -agregados
-        print(region, data.at[npeak.index[0], 'ajuste'])
-        print(filtro.cases.sum(), ':[', npeak.values[0], nprev.values[0], npeak.values[0]-agregados, ']', acumulados, a_repartir, agregados)
+        # print(region, data.at[npeak.index[0], 'ajuste'])
+        # print(filtro.cases.sum(), ':[', npeak.values[0], nprev.values[0], npeak.values[0]-agregados, ']', acumulados, a_repartir, agregados)
         data.update(filtro)
-    data.cases = data.cases + data.ajuste
-    data = data.drop(columns=['ajuste'])
+    data[column] = data[column] + data.ajuste
+    data['cases_acc'] = data['cases_acc'] + data.ajuste_acc
+    data = data.drop(columns=['ajuste', 'ajusre_acc'])
     return data
 
 #corregirCL()
