@@ -231,14 +231,9 @@ def createDataFrame(data, header):
     df = pd.DataFrame(data_dict)
     print('... dataFrame OK.')
     return df
-
-def corregirAcumulado(data, column, column_acc):
-    regiones = data.Region.unique()
-    for region in regiones:
-        data['cases_acc'] = data['cases'].cumsum()
-    return data
         
-def corregirPeak(data, column, date_peak, date_ini):
+def corregirPeak(data, column, column_acc, date_peak, date_ini):
+    print('Cprrigiendo peak: {}, {}'.format(column, column_acc))
     regiones = data.Region.unique()
     data['ajuste'] = 0
     data['ajuste'] = data.ajuste.astype('int32')
@@ -252,7 +247,9 @@ def corregirPeak(data, column, date_peak, date_ini):
             continue
         filtro = filtro[filtro.Fecha < date_peak]
         filtro = filtro[filtro.Fecha >= date_ini]
-        acumulados = filtro[filtro.index == nprev.index[0]]['cases_acc'].values[0]
+        acumulados = filtro[filtro.index == nprev.index[0]][column_acc].values[0]
+        if acumulados<1:
+            continue
         a_repartir = npeak.values[0] - nprev.values[0]
         filtro.ajuste = filtro[column] * (a_repartir / acumulados)
         filtro.ajuste = filtro.ajuste.astype('int32')
@@ -263,8 +260,8 @@ def corregirPeak(data, column, date_peak, date_ini):
         # print(filtro.cases.sum(), ':[', npeak.values[0], nprev.values[0], npeak.values[0]-agregados, ']', acumulados, a_repartir, agregados)
         data.update(filtro)
     data[column] = data[column] + data.ajuste
-    data['cases_acc'] = data['cases_acc'] + data.ajuste_acc
-    data = data.drop(columns=['ajuste', 'ajusre_acc'])
+    data[column_acc] = data[column_acc] + data.ajuste_acc
+    data = data.drop(columns=['ajuste', 'ajuste_acc'])
     return data
 
 #corregirCL()
@@ -307,7 +304,9 @@ fillDifferences(data_cl, 'recovered_acc', 'recovered', prevDateCl)
 header = ['Region', 'dateRep', 'day', 'month', 'year', 'cases', 'deaths', 'recovered',
           'cases_acc', 'deaths_acc', 'recovered_acc', 'popData2018', 'pcr', 'uci']
 df_cl = createDataFrame(data_cl, header[5:])
-corregirPeak(df_cl, 'cases', '2020-06-17', '2020-01-01')
+corregirPeak(df_cl, 'cases', 'cases_acc', '2020-06-17', '2020-01-01')
+corregirPeak(df_cl, 'deaths', 'deaths_acc', '2020-06-07', '2020-01-01')
+corregirPeak(df_cl, 'deaths', 'deaths_acc', '2020-07-17', '2020-01-01')
 df_cl = df_cl.convert_dtypes()
 print(df_cl.dtypes)
 df_cl.to_csv('../covid19_cl_pd.csv', index=False)
