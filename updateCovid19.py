@@ -100,45 +100,155 @@ def fillDifferences(data, column, column_dif, prev_date = prevDate):
             else:
                 data[country][f][column_dif] = data[country][f][column] - data[country][f_ant][column]
     return data
+
+def addRowToDict(data_dict, columns, row):
+    for i in range(len(columns)):
+        c = columns[i]
+        if not c in data_dict.keys():
+            data_dict[c] = []
+        data_dict[c].append(row[i])
     
-countries = fillCountries('../COVID-19/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv')
-data = dict()
-
-path_data = '../COVID-19/csse_covid_19_data/csse_covid_19_time_series/' 
-fillData(path_data + 'time_series_covid19_confirmed_global.csv', 'cases_acc', countries, data)
-fillData(path_data + 'time_series_covid19_deaths_global.csv', 'deaths_acc', countries, data)
-fillData(path_data + 'time_series_covid19_recovered_global.csv', 'recovered_acc', countries, data)
-
-fillDifferences(data, 'cases_acc', 'cases')
-fillDifferences(data, 'deaths_acc', 'deaths')
-fillDifferences(data, 'recovered_acc', 'recovered')
-            
-print(countries)
-print('----------------CHILE----------------')
-print(data['Chile'])
-print('=====================================')
-
-with open('../covid19.csv', 'w', newline='', encoding='utf-8') as f_writer:
-    header = ['dateRep', 'day', 'month', 'year', 'cases', 'deaths', 'recovered',
-              'cases_acc', 'deaths_acc', 'recovered_acc', 'countriesAndTerritories',
-              'geoId', 'countryterritoryCode', 'popData2018']
-    writer = csv.writer(f_writer)
-    writer.writerow(header)
+def createDataFrame(countries, data, header):
+    print('Creando dataFrame...')
+    data_dict = {}
     for country in countries.keys():
         if not(country in data.keys()):
             continue
         for d in data[country].keys():
             fecha = tuple(map(lambda x: int(x), d.split('/')))
             fecha = date(2000 + fecha[2], fecha[0], fecha[1])
-            try:
-                row= [fecha.strftime('%d/%m/%Y'), fecha.day, fecha.month, fecha.year, 
-                      data[country][d]['cases'], data[country][d]['deaths'], data[country][d]['recovered'], 
-                      data[country][d]['cases_acc'], data[country][d]['deaths_acc'], data[country][d]['recovered_acc'], 
-                      country, countries[country]['iso2'], countries[country]['iso3'], countries[country]['popData2018']]
-                writer.writerow(row)
-            except:
-                print('ERROR: ', row)
-                print(countries[country])
+            row= [fecha.strftime('%d/%m/%Y'), fecha.day, fecha.month, fecha.year, 
+                  data[country][d]['cases'], data[country][d]['deaths'], data[country][d]['recovered'], 
+                  data[country][d]['cases_acc'], data[country][d]['deaths_acc'], data[country][d]['recovered_acc'], 
+                  country, countries[country]['iso2'], countries[country]['iso3'], countries[country]['popData2018']]
+            addRowToDict(data_dict, header, row)
+    df = pd.DataFrame(data_dict)
+    print('... dataFrame OK.')
+    return df
+
+def corregirPeak(data, column, column_acc, date_peak, date_ini,
+                 group='Region', c_date='Fecha', l_filtro=None, column_w=None):
+    print('Corrigiendo peak: {}, {}, {}'.format(column, column_acc, date_peak))
+    if column_w is None:
+        column_w = column
+    regiones = data[group].unique()
+    data['ajuste'] = 0
+    data['ajuste'] = data.ajuste.astype('int32')
+    data['ajuste_acc'] = 0
+    data['ajuste_acc'] = data.ajuste_acc.astype('int32')
+    # print(regiones)
+    for region in regiones:
+        if not(l_filtro is None) and not(region in l_filtro):
+            continue
+        filtro = data[data[group] == region]
+        npeak = filtro[filtro[c_date] == date_peak][column]
+        nprev = filtro[filtro.index == npeak.index[0]-1][column]
+        # if nprev.values[0] >= npeak.values[0]:
+        #     continue
+        filtro = filtro[filtro[c_date] < date_peak]
+        filtro = filtro[filtro[c_date] >= date_ini]
+        acumulados = filtro[column].sum()#filtro[filtro.index == nprev.index[0]][column_acc].values[0]
+        if acumulados<1 and acumulados>-1:
+            continue
+        a_repartir = npeak.values[0] - nprev.values[0]
+        filtro.ajuste = filtro[column_w] * (a_repartir / acumulados)
+        filtro.ajuste = filtro.ajuste.astype('int32')
+        filtro.ajuste_acc = filtro.ajuste.cumsum()
+        agregados = filtro.ajuste.sum()
+        print('\t {}: peak={}, acc={}, repartir={}, agregados={}'.format(region, npeak.values[0], acumulados, a_repartir, agregados))
+        data.at[npeak.index[0], 'ajuste'] = -agregados
+        # print(region, data.at[npeak.index[0], 'ajuste'])
+        # print(filtro.cases.sum(), ':[', npeak.values[0], nprev.values[0], npeak.values[0]-agregados, ']', acumulados, a_repartir, agregados)
+        data.update(filtro)
+    data[column] = data[column] + data.ajuste
+    data[column_acc] = data[column_acc] + data.ajuste_acc
+    data = data.drop(columns=['ajuste', 'ajuste_acc'])
+    return data
+
+def addMovilMean(data, column, new_column, group, window=7):
+    regiones = data[group].unique()
+    data[new_column] = 0
+    for region in regiones:
+        data['temp'] = data[data[group] == region][column].rolling(window).mean().fillna(0)
+        data['temp'] = data['temp'].fillna(0)
+        data[new_column] = data[new_column] + data['temp']
+    
+def updateCovid19World():
+    countries = fillCountries('../COVID-19/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv')
+    data = dict()
+    
+    path_data = '../COVID-19/csse_covid_19_data/csse_covid_19_time_series/' 
+    fillData(path_data + 'time_series_covid19_confirmed_global.csv', 'cases_acc', countries, data)
+    fillData(path_data + 'time_series_covid19_deaths_global.csv', 'deaths_acc', countries, data)
+    fillData(path_data + 'time_series_covid19_recovered_global.csv', 'recovered_acc', countries, data)
+    
+    fillDifferences(data, 'cases_acc', 'cases')
+    fillDifferences(data, 'deaths_acc', 'deaths')
+    fillDifferences(data, 'recovered_acc', 'recovered')
+    
+    header = ['dateRep', 'day', 'month', 'year', 'cases', 'deaths', 'recovered',
+              'cases_acc', 'deaths_acc', 'recovered_acc', 'countriesAndTerritories',
+              'geoId', 'countryterritoryCode', 'popData2018']
+    
+    df = createDataFrame(countries, data, header)
+    df['Fecha'] = df.year.astype('str') + '-' + df.month.astype('str').str.zfill(2) + '-' + df.day.astype('str').str.zfill(2)
+    addMovilMean(df, 'cases', 'cases_7d', 'countriesAndTerritories', 7)
+    addMovilMean(df, 'deaths', 'deaths_7d', 'countriesAndTerritories', 7)
+    header = header + ['cases_7d', 'deaths_7d']
+    
+    corregirPeak(df, 'cases', 'cases_acc', '2020-06-17', '2020-01-01',
+                 group='countriesAndTerritories', l_filtro=['Chile'])
+    corregirPeak(df, 'cases', 'cases_acc', '2020-04-12', '2020-01-01',
+                 group='countriesAndTerritories', l_filtro=['France'])
+    corregirPeak(df, 'cases', 'cases_acc', '2020-04-24', '2020-01-01',
+                  group='countriesAndTerritories', l_filtro=['Spain'])
+    corregirPeak(df, 'cases', 'cases_acc', '2020-07-18', '2020-01-01',
+                  group='countriesAndTerritories', l_filtro=['Kyrgyzstan'])
+    corregirPeak(df, 'cases', 'cases_acc', '2020-08-02', '2020-03-01', 
+                  group='countriesAndTerritories', l_filtro=['Peru'], column_w='cases_7d')
+    corregirPeak(df, 'cases', 'cases_acc', '2020-10-05', '2020-01-01', 
+                  group='countriesAndTerritories', l_filtro=['Mexico'], column_w='cases_7d')
+    
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-06-08', '2020-01-01', 
+                  group='countriesAndTerritories', l_filtro=['Chile'])
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-07-17', '2020-01-01', 
+                  group='countriesAndTerritories', l_filtro=['Chile'])
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-05-25', '2020-01-01', 
+                  group='countriesAndTerritories', l_filtro=['Spain'])
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-06-19', '2020-01-01', 
+                  group='countriesAndTerritories', l_filtro=['Spain'])
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-06-16', '2020-01-01', 
+                  group='countriesAndTerritories', l_filtro=['India'])
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-06-25', '2020-01-01', 
+                  group='countriesAndTerritories', l_filtro=['US'])
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-07-23', '2020-01-01', 
+                  group='countriesAndTerritories', l_filtro=['Peru'])
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-07-22', '2020-01-01', 
+                  group='countriesAndTerritories', l_filtro=['South Africa'])
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-07-18', '2020-01-01', 
+                  group='countriesAndTerritories', l_filtro=['Kyrgyzstan'])
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-05-18', '2020-03-01',
+                  group='countriesAndTerritories', l_filtro=['US'])
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-06-14', '2020-03-01', 
+                  group='countriesAndTerritories', l_filtro=['Peru'])
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-07-27', '2020-03-01', 
+                  group='countriesAndTerritories', l_filtro=['Peru'])
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-08-14', '2020-03-01', 
+                  group='countriesAndTerritories', l_filtro=['Peru'], column_w='deaths_7d')
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-09-07', '2020-05-01', 
+                  group='countriesAndTerritories', l_filtro=['Ecuador'], column_w='deaths_7d')
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-09-07', '2020-05-01', 
+                  group='countriesAndTerritories', l_filtro=['Bolivia'], column_w='deaths_7d')
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-10-01', '2020-01-01', 
+                  group='countriesAndTerritories', l_filtro=['Argentina'], column_w='deaths_7d')
+    corregirPeak(df, 'deaths', 'deaths_acc', '2020-10-05', '2020-01-01', 
+                  group='countriesAndTerritories', l_filtro=['Mexico'], column_w='deaths_7d')
+    
+    df = df.convert_dtypes()
+    print(df)
+    print(header)
+    df.to_csv('../covid19.csv', index=False, columns=header)           
+    print(list(df['countriesAndTerritories'].unique()))
 
 ## BD CHILE
 data_empty = {'cases': 0, 'deaths': 0, 'recovered': 0, 'cases_acc': 0, 'deaths_acc': 0, 'recovered_acc': 0,
@@ -206,7 +316,7 @@ def fillPopCl(filename, data_cl, name_column, name_new_column):
         for f in data_cl[row.Region]:
             data_cl[row.Region][f][name_new_column] = pop
             
-def createDataFrame(data, header):
+def createDataFrameCl(data, header):
     columnas = ['Region', 'Fecha', 'dateRep', 'day', 'month', 'year'] + header
     df = pd.DataFrame(columns=columnas)
     print('Creando dataFrame...')
@@ -231,38 +341,8 @@ def createDataFrame(data, header):
     df = pd.DataFrame(data_dict)
     print('... dataFrame OK.')
     return df
-        
-def corregirPeak(data, column, column_acc, date_peak, date_ini):
-    print('Cprrigiendo peak: {}, {}'.format(column, column_acc))
-    regiones = data.Region.unique()
-    data['ajuste'] = 0
-    data['ajuste'] = data.ajuste.astype('int32')
-    data['ajuste_acc'] = 0
-    data['ajuste_acc'] = data.ajuste_acc.astype('int32')
-    for region in regiones:
-        filtro = data[data.Region == region]
-        npeak = filtro[filtro.Fecha == date_peak][column]
-        nprev = filtro[filtro.index == npeak.index[0]-1][column]
-        if nprev.values[0] >= npeak.values[0]:
-            continue
-        filtro = filtro[filtro.Fecha < date_peak]
-        filtro = filtro[filtro.Fecha >= date_ini]
-        acumulados = filtro[filtro.index == nprev.index[0]][column_acc].values[0]
-        if acumulados<1:
-            continue
-        a_repartir = npeak.values[0] - nprev.values[0]
-        filtro.ajuste = filtro[column] * (a_repartir / acumulados)
-        filtro.ajuste = filtro.ajuste.astype('int32')
-        filtro.ajuste_acc = filtro.ajuste.cumsum()
-        agregados = filtro.ajuste.sum()
-        data.at[npeak.index[0], 'ajuste'] = -agregados
-        # print(region, data.at[npeak.index[0], 'ajuste'])
-        # print(filtro.cases.sum(), ':[', npeak.values[0], nprev.values[0], npeak.values[0]-agregados, ']', acumulados, a_repartir, agregados)
-        data.update(filtro)
-    data[column] = data[column] + data.ajuste
-    data[column_acc] = data[column_acc] + data.ajuste_acc
-    data = data.drop(columns=['ajuste', 'ajuste_acc'])
-    return data
+
+updateCovid19World()
 
 #corregirCL()
 path_p4 = '../tmp/cl_producto4/'
@@ -303,31 +383,13 @@ fillDifferences(data_cl, 'recovered_acc', 'recovered', prevDateCl)
 
 header = ['Region', 'dateRep', 'day', 'month', 'year', 'cases', 'deaths', 'recovered',
           'cases_acc', 'deaths_acc', 'recovered_acc', 'popData2018', 'pcr', 'uci']
-df_cl = createDataFrame(data_cl, header[5:])
+df_cl = createDataFrameCl(data_cl, header[5:])
 corregirPeak(df_cl, 'cases', 'cases_acc', '2020-06-17', '2020-01-01')
 corregirPeak(df_cl, 'deaths', 'deaths_acc', '2020-06-07', '2020-01-01')
 corregirPeak(df_cl, 'deaths', 'deaths_acc', '2020-07-17', '2020-01-01')
+corregirPeak(df_cl, 'deaths', 'deaths_acc', '2020-07-17', '2020-05-01')
 df_cl = df_cl.convert_dtypes()
+
 print(df_cl.dtypes)
 df_cl.to_csv('../covid19_cl_pd.csv', index=False)
 df_cl.to_csv('../covid19_cl.csv', index=False, columns=header)
-
-# with open('../covid19_cl.csv', 'w', newline='', encoding='utf-8') as f_writer:
-#     writer = csv.writer(f_writer)
-#     writer.writerow(header)
-#     for region in data_cl.keys():
-#         for d in data_cl[region].keys():
-#             sf = tuple(map(lambda x: int(x), d.split('-')))
-#             fecha = date(sf[0], sf[1], sf[2])
-#             try:
-#                 row= [region, fecha.strftime('%d/%m/%Y'), fecha.day, fecha.month, fecha.year, 
-#                       data_cl[region][d]['cases'], data_cl[region][d]['deaths'], data_cl[region][d]['recovered'], 
-#                       data_cl[region][d]['cases_acc'], data_cl[region][d]['deaths_acc'], data_cl[region][d]['recovered_acc'], 
-#                       data_cl[region][d]['popData2018'],
-#                       data_cl[region][d]['pcr'], data_cl[region][d]['uci']]
-#                 writer.writerow(row)
-#             except:
-#                 print('ERROR CL:', row)
-#                 print(region, d, data_cl[region][d])
-#                 break
-

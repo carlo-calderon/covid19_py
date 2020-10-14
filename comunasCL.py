@@ -23,8 +23,7 @@ for row in data.iterrows():
     m['Comuna'] = name
     m['Poblacion'] = row[1]['Poblacion']
     s = m['cases']
-    m['new_cases'] = s.subtract(s.shift(1), fill_value=0)
-    
+    m['new_cases'] = s.subtract(s.shift(1), fill_value=0)    
     comunas.append(m)
     
 print('Total------')
